@@ -15,9 +15,13 @@ using Nuke.Common.CI.GitHubActions;
 using Nuke.Common.Execution;
 using Nuke.Common.IO;
 using Nuke.Common.Tooling;
+using Nuke.Common.Tools.GitVersion;
+using Nuke.Common.Utilities;
+using Nuke.Common.ValueInjection;
 using VerifyXunit;
 using VerifyTests;
 using Xunit;
+using static Nuke.Common.Tools.GitVersion.GitVersionTasks;
 
 namespace Nuke.Common.Tests.CI
 {
@@ -48,6 +52,7 @@ namespace Nuke.Common.Tests.CI
             return TestBuild.GetAttributes().Select(x => new object[] { x.TestName, x.Generator });
         }
 
+        [PersistAzurePipelineVariables]
         public class TestBuild : NukeBuild
         {
             public static IEnumerable<(string TestName, IConfigurationGenerator Generator)> GetAttributes()
@@ -185,8 +190,6 @@ namespace Nuke.Common.Tests.CI
 
             public AbsolutePath PackageDirectory => OutputDirectory / "packages";
 
-        
-
             [Partition(2)] public readonly Partition TestPartition;
             public AbsolutePath TestResultDirectory => OutputDirectory / "test-results";
 
@@ -204,6 +207,8 @@ namespace Nuke.Common.Tests.CI
             [Parameter("Azure Pipelines System Access Token")]
             public readonly string AzurePipelinesSystemAccessToken;
             
+            [Variable] GitVersion GitVersion { get; set; }
+
             Target A => _ => _
                 .Executes(() =>
                 {
@@ -211,8 +216,8 @@ namespace Nuke.Common.Tests.CI
                     Logger.Normal(StringVariable);
 
                     StringVariable = "A";
-                    
-                    AzurePipelines.Instance.SetVariable(nameof(StringVariable), StringVariable);
+
+                    GitVersion = GitVersion(s => s).Result;
                 });
             
             Target B => _ => _
@@ -220,6 +225,7 @@ namespace Nuke.Common.Tests.CI
                 .Executes(() =>
                 {
                     Logger.Normal(StringVariable);
+                    Logger.Normal(GitVersion.NuGetVersionV2);
                 });
         }
 

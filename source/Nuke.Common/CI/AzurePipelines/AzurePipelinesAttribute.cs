@@ -94,13 +94,16 @@ namespace Nuke.Common.CI.AzurePipelines
 
         public override ConfigurationEntity GetConfiguration(NukeBuild build, IReadOnlyCollection<ExecutableTarget> relevantTargets)
         {
+            var variables = GetVariables(build, relevantTargets).ToArray();
+            var parameters = GetParameters(build, relevantTargets).ToArray();
+            var parameterVariables = parameters.Select(x => new AzurePipelinesVariable{Name = x.Name, DefaultValue = x.Name, IsParameterVariable = true});
             return new AzurePipelinesConfiguration
                    {
                        VariableGroups = ImportVariableGroups,
                        VcsPushTrigger = GetVcsPushTrigger(),
-                       Stages = _images.Select(x => GetStage(x, relevantTargets, GetParameters(build, relevantTargets).ToArray())).ToArray(),
-                       Parameters = GetParameters(build, relevantTargets).ToArray(),
-                       Variables = GetVariables(build, relevantTargets).ToArray()
+                       Stages = _images.Select(x => GetStage(x, relevantTargets, parameters, variables)).ToArray(),
+                       Parameters = parameters,
+                       Variables = parameterVariables.Union(variables).ToArray()
                    };
         }
 
@@ -203,11 +206,12 @@ namespace Nuke.Common.CI.AzurePipelines
         protected virtual AzurePipelinesStage GetStage(
             AzurePipelinesImage image,
             IReadOnlyCollection<ExecutableTarget> relevantTargets,
-            AzurePipelinesParameter[] parameters)
+            AzurePipelinesParameter[] parameters,
+            AzurePipelinesVariable[] variables)
         {
             var lookupTable = new LookupTable<ExecutableTarget, AzurePipelinesJob>();
             var jobs = relevantTargets
-                .Select(x => (ExecutableTarget: x, Job: GetJob(x, lookupTable, relevantTargets, parameters)))
+                .Select(x => (ExecutableTarget: x, Job: GetJob(x, lookupTable, relevantTargets, parameters, variables)))
                 .ForEachLazy(x => lookupTable.Add(x.ExecutableTarget, x.Job))
                 .Select(x => x.Job).ToArray();
 
@@ -225,7 +229,8 @@ namespace Nuke.Common.CI.AzurePipelines
             ExecutableTarget executableTarget,
             LookupTable<ExecutableTarget, AzurePipelinesJob> jobs,
             IReadOnlyCollection<ExecutableTarget> relevantTargets,
-            AzurePipelinesParameter[] parameters)
+            AzurePipelinesParameter[] parameters,
+            AzurePipelinesVariable[] variables)
         {
             var (_, totalPartitions) = ArtifactExtensions.Partitions.GetValueOrDefault(executableTarget.Definition);
             var dependencies = GetTargetDependencies(executableTarget).SelectMany(x => jobs[x]).ToArray();
@@ -236,6 +241,7 @@ namespace Nuke.Common.CI.AzurePipelines
                        Dependencies = dependencies,
                        Parallel = totalPartitions,
                        Steps = GetSteps(executableTarget, relevantTargets, parameters).ToArray(),
+                       Variables = variables
                    };
         }
 

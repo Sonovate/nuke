@@ -13,10 +13,11 @@ namespace Nuke.Common.CI.AzurePipelines
         public override void Write(CustomFileWriter writer)
         {
             writer.WriteLine($"- name: {Name}");
-            writer.WriteLine($"  value: {DefaultValue}");
+            writer.WriteLine(!IsParameterVariable ? $"  value: {DefaultValue}" : $"  value: ${{{{ parameters.{Name} }}}}");
         }
 
         public string Name { get; set; }
         public string DefaultValue { get; set; }
+        public bool IsParameterVariable { get; set; }
     }
 }

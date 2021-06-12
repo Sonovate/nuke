@@ -20,8 +20,12 @@ parameters:
 
 variables:
   - group: variable-group-1
+  - name: GitVersion
+    value:
   - name: StringVariable
     value: var
+  - name: Verbosity
+    value: ${{ parameters.Verbosity }}
 
 trigger:
   batch: true
@@ -61,6 +65,9 @@ stages:
       - job: B
         displayName: 'B'
         dependsOn: [ A ]
+        variables:
+          GitVersion: $[ dependencies.A.outputs['CmdLine.GitVersion'] ]
+          StringVariable: $[ dependencies.A.outputs['CmdLine.StringVariable'] ]
         steps:
           - task: CmdLine@2
             inputs:
@@ -68,4 +75,3 @@ stages:
             env:
               AzurePipelinesSystemAccessToken: $(System.AccessToken)
               GitHubToken: $(GitHubToken)
-  

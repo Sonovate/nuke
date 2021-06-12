@@ -20,6 +20,7 @@ namespace Nuke.Common.CI.AzurePipelines.Configuration
         public AzurePipelinesJob[] Dependencies { get; set; }
         public int Parallel { get; set; }
         public AzurePipelinesStep[] Steps { get; set; }
+        public AzurePipelinesVariable[] Variables { get; set; }
 
         public override void Write(CustomFileWriter writer)
         {
@@ -44,6 +45,16 @@ namespace Nuke.Common.CI.AzurePipelines.Configuration
                     }
                 }
 
+                var lastJob = Dependencies.LastOrDefault()?.Name;
+
+                if(lastJob != null)
+                {
+                    using (writer.WriteBlock("variables:"))
+                    {
+                        Variables.ForEach(x =>  writer.WriteLine($"{x.Name}: $[ dependencies.{lastJob}.outputs['CmdLine.{x.Name}'] ]"));
+                    }
+                }
+                
                 using (writer.WriteBlock("steps:"))
                 {
                     Steps.ForEach(x => x.Write(writer));
