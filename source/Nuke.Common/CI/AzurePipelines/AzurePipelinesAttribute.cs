@@ -6,6 +6,8 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Linq.Expressions;
+using System.Reflection;
 using JetBrains.Annotations;
 using Nuke.Common.CI.AzurePipelines.Configuration;
 using Nuke.Common.Execution;
@@ -13,6 +15,7 @@ using Nuke.Common.IO;
 using Nuke.Common.Tooling;
 using Nuke.Common.Utilities;
 using Nuke.Common.Utilities.Collections;
+using Nuke.Common.ValueInjection;
 using static Nuke.Common.IO.PathConstruction;
 
 namespace Nuke.Common.CI.AzurePipelines
@@ -93,8 +96,79 @@ namespace Nuke.Common.CI.AzurePipelines
                    {
                        VariableGroups = ImportVariableGroups,
                        VcsPushTrigger = GetVcsPushTrigger(),
-                       Stages = _images.Select(x => GetStage(x, relevantTargets)).ToArray()
+                       Stages = _images.Select(x => GetStage(x, relevantTargets, GetParameters(build, relevantTargets).ToArray())).ToArray(),
+                       Parameters = GetParameters(build, relevantTargets).ToArray(),
+                       Variables = GetVariables(build, relevantTargets).ToArray()
                    };
+        }
+
+        protected virtual IEnumerable<AzurePipelinesVariable> GetVariables(NukeBuild build, IReadOnlyCollection<ExecutableTarget> relevantTargets)
+        {
+            return ValueInjectionUtility.GetParameterMembers(build.GetType(), includeUnlisted: false)
+                .Where(x => x.HasCustomAttribute<VariableAttribute>())
+                .Select(x => GetVariable(x, build, required: false));
+        }
+        
+        protected virtual IEnumerable<AzurePipelinesParameter> GetParameters(NukeBuild build, IReadOnlyCollection<ExecutableTarget> relevantTargets)
+        {
+            return ValueInjectionUtility.GetParameterMembers(build.GetType(), includeUnlisted: false)
+                .Except(relevantTargets.SelectMany(x => x.Requirements
+                    .Where(y => y is not Expression<Func<bool>>)
+                    .Select(y => y.GetMemberInfo())))
+                .Where(x => !x.HasCustomAttribute<SecretAttribute>() || ImportSecrets.Contains(ParameterService.GetParameterMemberName(x)))
+                .Where(x => x.DeclaringType != typeof(NukeBuild) || x.Name == nameof(NukeBuild.Verbosity))
+                .Select(x => GetParameter(x, build, required: false));
+        }
+
+        protected virtual AzurePipelinesVariable GetVariable(MemberInfo member, NukeBuild build, bool required)
+        {  
+            return new() 
+                  {
+                      Name = ParameterService.GetParameterMemberName(member),
+                      DefaultValue = member.GetValue(build) as string
+                  };
+        }
+        
+        protected virtual AzurePipelinesParameter GetParameter(MemberInfo member, NukeBuild build, bool required)
+        {
+            var attribute = member.GetCustomAttribute<ParameterAttribute>();
+            var valueSet = ParameterService.GetParameterValueSet(member, build);
+
+            var numericTypes = new HashSet<Type>
+            {
+                typeof(decimal), typeof(short), typeof(long), typeof(int), typeof(float), typeof(double)
+            };
+            
+            string type;
+            var memberType = member.GetMemberType();
+            if (memberType == typeof(string))
+            {
+                type = "string";
+            }
+            else if (numericTypes.Contains(memberType))
+            {
+                type = "number";
+            }else if (memberType == typeof(bool))
+            {
+                type = "boolean";
+            }
+            else
+            {
+                type = "object";
+            }
+            
+            return new AzurePipelinesParameter
+           {
+               Name = ParameterService.GetParameterMemberName(member),
+
+               Description = attribute.Description,
+               Options = valueSet?.ToDictionary(x => x.Item1, x => x.Item2),
+               Type = type,
+               DefaultValue = member.GetValue(build) as string,
+               // Display = required ? TeamCityParameterDisplay.Prompt : TeamCityParameterDisplay.Normal,
+               // AllowMultiple = member.GetMemberType().IsArray && valueSet is not null,
+               // ValueSeparator = valueSeparator
+           };
         }
 
         [CanBeNull]
@@ -125,11 +199,12 @@ namespace Nuke.Common.CI.AzurePipelines
 
         protected virtual AzurePipelinesStage GetStage(
             AzurePipelinesImage image,
-            IReadOnlyCollection<ExecutableTarget> relevantTargets)
+            IReadOnlyCollection<ExecutableTarget> relevantTargets,
+            AzurePipelinesParameter[] parameters)
         {
             var lookupTable = new LookupTable<ExecutableTarget, AzurePipelinesJob>();
             var jobs = relevantTargets
-                .Select(x => (ExecutableTarget: x, Job: GetJob(x, lookupTable, relevantTargets)))
+                .Select(x => (ExecutableTarget: x, Job: GetJob(x, lookupTable, relevantTargets, parameters)))
                 .ForEachLazy(x => lookupTable.Add(x.ExecutableTarget, x.Job))
                 .Select(x => x.Job).ToArray();
 
@@ -146,7 +221,8 @@ namespace Nuke.Common.CI.AzurePipelines
         protected virtual AzurePipelinesJob GetJob(
             ExecutableTarget executableTarget,
             LookupTable<ExecutableTarget, AzurePipelinesJob> jobs,
-            IReadOnlyCollection<ExecutableTarget> relevantTargets)
+            IReadOnlyCollection<ExecutableTarget> relevantTargets,
+            AzurePipelinesParameter[] parameters)
         {
             var (_, totalPartitions) = ArtifactExtensions.Partitions.GetValueOrDefault(executableTarget.Definition);
             var dependencies = GetTargetDependencies(executableTarget).SelectMany(x => jobs[x]).ToArray();
@@ -156,13 +232,14 @@ namespace Nuke.Common.CI.AzurePipelines
                        DisplayName = executableTarget.Name,
                        Dependencies = dependencies,
                        Parallel = totalPartitions,
-                       Steps = GetSteps(executableTarget, relevantTargets).ToArray(),
+                       Steps = GetSteps(executableTarget, relevantTargets, parameters).ToArray(),
                    };
         }
 
         protected virtual IEnumerable<AzurePipelinesStep> GetSteps(
             ExecutableTarget executableTarget,
-            IReadOnlyCollection<ExecutableTarget> relevantTargets)
+            IReadOnlyCollection<ExecutableTarget> relevantTargets,
+            AzurePipelinesParameter[] azurePipelinesParameters)
         {
             if (CacheKeyFiles.Any())
             {
@@ -227,6 +304,7 @@ namespace Nuke.Common.CI.AzurePipelines
 
             foreach (var secret in ImportSecrets)
                 yield return (secret, GetSecretValue(secret));
+
         }
 
         protected virtual string GetArtifact(string artifact)

@@ -87,4 +87,8 @@ namespace Nuke.Common
 
         public string Prefix { get; }
     }
+    
+    public class VariableAttribute : ParameterAttribute
+    {
+    }
 }

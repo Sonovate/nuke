@@ -50,7 +50,8 @@ partial class Build
         protected override AzurePipelinesJob GetJob(
             ExecutableTarget executableTarget,
             LookupTable<ExecutableTarget, AzurePipelinesJob> jobs,
-            IReadOnlyCollection<ExecutableTarget> relevantTargets)
+            IReadOnlyCollection<ExecutableTarget> relevantTargets,
+            AzurePipelinesParameter[] parameters)
         {
             var job = base.GetJob(executableTarget, jobs, relevantTargets);
 
