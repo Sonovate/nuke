@@ -40,7 +40,8 @@ parameters:
 
 variables:
   - group: variable-group-1
-  - StringVariable: var
+  - name: StringVariable
+    value: var
 
 trigger:
   batch: true
