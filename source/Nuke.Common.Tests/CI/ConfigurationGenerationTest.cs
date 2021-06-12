@@ -59,10 +59,6 @@ namespace Nuke.Common.Tests.CI
                     {
                         Description = "description",
                         Version = "1.3.3.7",
-                        NonEntryTargets = new[] { nameof(Clean) },
-                        VcsTriggeredTargets = new[] { nameof(Test), nameof(Pack) },
-                        ManuallyTriggeredTargets = new[] { nameof(Publish) },
-                        NightlyTriggeredTargets = new[] { nameof(Publish) },
                         NightlyTriggerBranchFilters = new[] { "nightly_branch_filter" },
                         VcsTriggerBranchFilters = new[] { "vcs_branch_filter" }
                     }
@@ -75,9 +71,6 @@ namespace Nuke.Common.Tests.CI
                         AzurePipelinesImage.Ubuntu1804,
                         AzurePipelinesImage.Windows2019)
                     {
-                        NonEntryTargets = new[] { nameof(Clean) },
-                        InvokedTargets = new[] { nameof(Test) },
-                        ExcludedTargets = new[] { nameof(Pack) },
                         ImportSystemAccessTokenAs = nameof(AzurePipelinesSystemAccessToken),
                         ImportVariableGroups = new[] { "variable-group-1" },
                         ImportSecrets = new[] { nameof(GitHubToken) },
@@ -88,7 +81,9 @@ namespace Nuke.Common.Tests.CI
                         TriggerPathsExclude = new[] { "excluded_path" },
                         TriggerTagsInclude = new[] { "included_tags" },
                         TriggerTagsExclude = new[] { "excluded_tags" },
-                        PipelineParameters = new[] { nameof(Verbosity) }
+                        PipelineParameters = new[] { nameof(Verbosity) },
+                        CacheKeyFiles = new string[0],
+                        InvokedTargets = new string[]{nameof(B)}
                     }
                 );
 
@@ -169,9 +164,6 @@ namespace Nuke.Common.Tests.CI
 
             public AbsolutePath SourceDirectory => RootDirectory / "src";
 
-            public Target Clean => _ => _
-                .Before(Restore);
-
             [Parameter] public readonly bool IgnoreFailedSources;
 
             public Target Restore => _ => _
@@ -193,28 +185,15 @@ namespace Nuke.Common.Tests.CI
 
             public AbsolutePath PackageDirectory => OutputDirectory / "packages";
 
-            public Target Pack => _ => _
-                .DependsOn(Compile)
-                .Consumes(Restore, Compile)
-                .Produces(PackageDirectory / "*.nupkg");
+        
 
             [Partition(2)] public readonly Partition TestPartition;
             public AbsolutePath TestResultDirectory => OutputDirectory / "test-results";
 
-            public Target Test => _ => _
-                .DependsOn(Compile)
-                .Produces(TestResultDirectory / "*.trx")
-                .Produces(TestResultDirectory / "*.xml")
-                .Partition(() => TestPartition);
-
+      
             public string CoverageReportArchive => OutputDirectory / "coverage-report.zip";
 
-            public Target Coverage => _ => _
-                .DependsOn(Test)
-                .TriggeredBy(Test)
-                .Consumes(Test)
-                .Produces(CoverageReportArchive);
-
+       
             [Parameter("NuGet Api Key")] [Secret] public readonly string ApiKey;
 
             [Parameter("NuGet Source for Packages")]
@@ -224,15 +203,24 @@ namespace Nuke.Common.Tests.CI
 
             [Parameter("Azure Pipelines System Access Token")]
             public readonly string AzurePipelinesSystemAccessToken;
+            
+            Target A => _ => _
+                .Executes(() =>
+                {
+                    Logger.Normal(Verbosity.ToString());
+                    Logger.Normal(StringVariable);
 
-            public Target Publish => _ => _
-                .DependsOn(Clean, Test, Pack)
-                .Consumes(Pack)
-                .Requires(() => ApiKey);
-
-            public Target Announce => _ => _
-                .TriggeredBy(Publish)
-                .AssuredAfterFailure();
+                    StringVariable = "A";
+                    
+                    AzurePipelines.Instance.SetVariable(nameof(StringVariable), StringVariable);
+                });
+            
+            Target B => _ => _
+                .DependsOn(A)
+                .Executes(() =>
+                {
+                    Logger.Normal(StringVariable);
+                });
         }
 
         [TypeConverter(typeof(TypeConverter<Configuration>))]
