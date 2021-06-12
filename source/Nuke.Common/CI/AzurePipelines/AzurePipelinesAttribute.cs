@@ -57,6 +57,8 @@ namespace Nuke.Common.CI.AzurePipelines
 
         public string[] InvokedTargets { get; set; } = new string[0];
 
+        public string[] PipelineParameters { get; set; } = new string[0];
+
         public bool TriggerDisabled { get; set; }
 
         public bool TriggerBatch
@@ -117,6 +119,7 @@ namespace Nuke.Common.CI.AzurePipelines
                     .Select(y => y.GetMemberInfo())))
                 .Where(x => !x.HasCustomAttribute<SecretAttribute>() || ImportSecrets.Contains(ParameterService.GetParameterMemberName(x)))
                 .Where(x => x.DeclaringType != typeof(NukeBuild) || x.Name == nameof(NukeBuild.Verbosity))
+                .Where(x => PipelineParameters.Contains(x.Name))
                 .Select(x => GetParameter(x, build, required: false));
         }
 

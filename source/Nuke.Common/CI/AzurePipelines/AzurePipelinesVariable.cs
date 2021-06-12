@@ -12,7 +12,8 @@ namespace Nuke.Common.CI.AzurePipelines
     {
         public override void Write(CustomFileWriter writer)
         {
-            writer.WriteLine($"- {Name}: {DefaultValue}");
+            writer.WriteLine($"- name: {Name}");
+            writer.WriteLine($"  value: {DefaultValue}");
         }
 
         public string Name { get; set; }
