@@ -53,7 +53,7 @@ partial class Build
             IReadOnlyCollection<ExecutableTarget> relevantTargets,
             AzurePipelinesParameter[] parameters)
         {
-            var job = base.GetJob(executableTarget, jobs, relevantTargets);
+            var job = base.GetJob(executableTarget, jobs, relevantTargets, parameters);
 
             var symbol = CustomNames.GetValueOrDefault(job.Name).NotNull("symbol != null");
             job.DisplayName = job.Parallel == 0
