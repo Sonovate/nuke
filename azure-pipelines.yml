@@ -15,26 +15,6 @@
 # ------------------------------------------------------------------------------
 
 parameters:
-  - name: AzurePipelinesSystemAccessToken
-    type: string
-  - name: Configuration
-    type: object
-  - name: ConfigurationArray
-    type: object
-  - name: GitHubToken
-    type: string
-  - name: IgnoreFailedSources
-    type: boolean
-  - name: IntegerArray
-    type: object
-  - name: Source
-    type: string
-    default: string
-  - name: StringArray
-    type: object
-  - name: StringVariable
-    type: string
-    default: string
   - name: Verbosity
     type: object
 
