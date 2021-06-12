@@ -5,7 +5,7 @@
 #
 #     - To turn off auto-generation set:
 #
-#         [AzurePipelines (AutoGenerate = false)]
+#         [TestAzurePipelines (AutoGenerate = false)]
 #
 #     - To trigger manual generation invoke:
 #
@@ -14,148 +14,218 @@
 # </auto-generated>
 # ------------------------------------------------------------------------------
 
+parameters:
+  - name: AzurePipelinesSystemAccessToken
+    type: string
+  - name: Configuration
+    type: object
+  - name: ConfigurationArray
+    type: object
+  - name: GitHubToken
+    type: string
+  - name: IgnoreFailedSources
+    type: boolean
+  - name: IntegerArray
+    type: object
+  - name: Source
+    type: string
+    default: string
+  - name: StringArray
+    type: object
+  - name: StringVariable
+    type: string
+    default: string
+  - name: Verbosity
+    type: object
+
+variables:
+  - group: variable-group-1
+  - StringVariable: var
+
+trigger:
+  batch: true
+  branches:
+    include:
+      - included_branch
+    exclude:
+      - excluded_branch
+  tags:
+    include:
+      - included_tags
+    exclude:
+      - excluded_tags
+  paths:
+    include:
+      - included_path
+    exclude:
+      - excluded_path
+
 stages:
-  - stage: ubuntu_latest
-    displayName: 'ubuntu-latest'
+  - stage: ubuntu_18_04
+    displayName: 'ubuntu-18.04'
     dependsOn: [  ]
     pool:
-      vmImage: 'ubuntu-latest'
+      vmImage: 'ubuntu-18.04'
     jobs:
-      - job: Test
-        displayName: '🚦 Test 🧩'
+      - job: Restore
+        displayName: 'Restore'
         dependsOn: [  ]
+        steps:
+          - task: Cache@2
+            inputs:
+              key: $(Agent.OS) | **/global.json, **/*.csproj
+              restoreKeys: $(Agent.OS)
+              path: ~/.nuget/packages
+          - task: CmdLine@2
+            inputs:
+              script: './build.cmd Restore --skip'
+            env:
+              AzurePipelinesSystemAccessToken: $(System.AccessToken)
+              GitHubToken: $(GitHubToken)
+          - task: PublishBuildArtifacts@1
+            inputs:
+              artifactName: src
+              pathtoPublish: 'src'
+      - job: Compile
+        displayName: 'Compile'
+        dependsOn: [ Restore ]
+        steps:
+          - task: Cache@2
+            inputs:
+              key: $(Agent.OS) | **/global.json, **/*.csproj
+              restoreKeys: $(Agent.OS)
+              path: ~/.nuget/packages
+          - task: CmdLine@2
+            inputs:
+              script: './build.cmd Compile --skip'
+            env:
+              AzurePipelinesSystemAccessToken: $(System.AccessToken)
+              GitHubToken: $(GitHubToken)
+          - task: PublishBuildArtifacts@1
+            inputs:
+              artifactName: src
+              pathtoPublish: 'src'
+      - job: Test
+        displayName: 'Test'
+        dependsOn: [ Compile ]
         strategy:
           parallel: 2
         steps:
           - task: Cache@2
             inputs:
-              key: $(Agent.OS) | global.json, source/**/*.csproj
+              key: $(Agent.OS) | **/global.json, **/*.csproj
               restoreKeys: $(Agent.OS)
               path: ~/.nuget/packages
           - task: CmdLine@2
             inputs:
-              script: './build.cmd Restore Compile Test --skip --test-partition $(System.JobPositionInPhase)'
+              script: './build.cmd Test --skip --test-partition $(System.JobPositionInPhase)'
             env:
-              AzurePipelinesAccessToken: $(System.AccessToken)
-              EnterpriseAccessToken: $(EnterpriseAccessToken)
-              SlackUserAccessToken: $(SlackUserAccessToken)
+              AzurePipelinesSystemAccessToken: $(System.AccessToken)
+              GitHubToken: $(GitHubToken)
           - task: PublishBuildArtifacts@1
             inputs:
               artifactName: test-results
               pathtoPublish: 'output/test-results'
-      - job: Pack
-        displayName: '📦 Pack'
-        dependsOn: [  ]
+      - job: Coverage
+        displayName: 'Coverage'
+        dependsOn: [ Test ]
         steps:
           - task: Cache@2
             inputs:
-              key: $(Agent.OS) | global.json, source/**/*.csproj
+              key: $(Agent.OS) | **/global.json, **/*.csproj
               restoreKeys: $(Agent.OS)
               path: ~/.nuget/packages
           - task: CmdLine@2
             inputs:
-              script: './build.cmd Restore Compile Pack --skip'
+              script: './build.cmd Coverage --skip'
             env:
-              AzurePipelinesAccessToken: $(System.AccessToken)
-              EnterpriseAccessToken: $(EnterpriseAccessToken)
-              SlackUserAccessToken: $(SlackUserAccessToken)
+              AzurePipelinesSystemAccessToken: $(System.AccessToken)
+              GitHubToken: $(GitHubToken)
           - task: PublishBuildArtifacts@1
             inputs:
-              artifactName: packages
-              pathtoPublish: 'output/packages'
-  - stage: windows_latest
-    displayName: 'windows-latest'
+              artifactName: coverage-report.zip
+              pathtoPublish: 'output/coverage-report.zip'
+  - stage: windows_2019
+    displayName: 'windows-2019'
     dependsOn: [  ]
     pool:
-      vmImage: 'windows-latest'
+      vmImage: 'windows-2019'
     jobs:
-      - job: Test
-        displayName: '🚦 Test 🧩'
+      - job: Restore
+        displayName: 'Restore'
         dependsOn: [  ]
+        steps:
+          - task: Cache@2
+            inputs:
+              key: $(Agent.OS) | **/global.json, **/*.csproj
+              restoreKeys: $(Agent.OS)
+              path: ~/.nuget/packages
+          - task: CmdLine@2
+            inputs:
+              script: './build.cmd Restore --skip'
+            env:
+              AzurePipelinesSystemAccessToken: $(System.AccessToken)
+              GitHubToken: $(GitHubToken)
+          - task: PublishBuildArtifacts@1
+            inputs:
+              artifactName: src
+              pathtoPublish: 'src'
+      - job: Compile
+        displayName: 'Compile'
+        dependsOn: [ Restore ]
+        steps:
+          - task: Cache@2
+            inputs:
+              key: $(Agent.OS) | **/global.json, **/*.csproj
+              restoreKeys: $(Agent.OS)
+              path: ~/.nuget/packages
+          - task: CmdLine@2
+            inputs:
+              script: './build.cmd Compile --skip'
+            env:
+              AzurePipelinesSystemAccessToken: $(System.AccessToken)
+              GitHubToken: $(GitHubToken)
+          - task: PublishBuildArtifacts@1
+            inputs:
+              artifactName: src
+              pathtoPublish: 'src'
+      - job: Test
+        displayName: 'Test'
+        dependsOn: [ Compile ]
         strategy:
           parallel: 2
         steps:
           - task: Cache@2
             inputs:
-              key: $(Agent.OS) | global.json, source/**/*.csproj
+              key: $(Agent.OS) | **/global.json, **/*.csproj
               restoreKeys: $(Agent.OS)
               path: ~/.nuget/packages
           - task: CmdLine@2
             inputs:
-              script: './build.cmd Restore Compile Test --skip --test-partition $(System.JobPositionInPhase)'
+              script: './build.cmd Test --skip --test-partition $(System.JobPositionInPhase)'
             env:
-              AzurePipelinesAccessToken: $(System.AccessToken)
-              EnterpriseAccessToken: $(EnterpriseAccessToken)
-              SlackUserAccessToken: $(SlackUserAccessToken)
+              AzurePipelinesSystemAccessToken: $(System.AccessToken)
+              GitHubToken: $(GitHubToken)
           - task: PublishBuildArtifacts@1
             inputs:
               artifactName: test-results
               pathtoPublish: 'output/test-results'
-      - job: Pack
-        displayName: '📦 Pack'
-        dependsOn: [  ]
+      - job: Coverage
+        displayName: 'Coverage'
+        dependsOn: [ Test ]
         steps:
           - task: Cache@2
             inputs:
-              key: $(Agent.OS) | global.json, source/**/*.csproj
+              key: $(Agent.OS) | **/global.json, **/*.csproj
               restoreKeys: $(Agent.OS)
               path: ~/.nuget/packages
           - task: CmdLine@2
             inputs:
-              script: './build.cmd Restore Compile Pack --skip'
+              script: './build.cmd Coverage --skip'
             env:
-              AzurePipelinesAccessToken: $(System.AccessToken)
-              EnterpriseAccessToken: $(EnterpriseAccessToken)
-              SlackUserAccessToken: $(SlackUserAccessToken)
+              AzurePipelinesSystemAccessToken: $(System.AccessToken)
+              GitHubToken: $(GitHubToken)
           - task: PublishBuildArtifacts@1
             inputs:
-              artifactName: packages
-              pathtoPublish: 'output/packages'
-  - stage: macOS_latest
-    displayName: 'macOS-latest'
-    dependsOn: [  ]
-    pool:
-      vmImage: 'macOS-latest'
-    jobs:
-      - job: Test
-        displayName: '🚦 Test 🧩'
-        dependsOn: [  ]
-        strategy:
-          parallel: 2
-        steps:
-          - task: Cache@2
-            inputs:
-              key: $(Agent.OS) | global.json, source/**/*.csproj
-              restoreKeys: $(Agent.OS)
-              path: ~/.nuget/packages
-          - task: CmdLine@2
-            inputs:
-              script: './build.cmd Restore Compile Test --skip --test-partition $(System.JobPositionInPhase)'
-            env:
-              AzurePipelinesAccessToken: $(System.AccessToken)
-              EnterpriseAccessToken: $(EnterpriseAccessToken)
-              SlackUserAccessToken: $(SlackUserAccessToken)
-          - task: PublishBuildArtifacts@1
-            inputs:
-              artifactName: test-results
-              pathtoPublish: 'output/test-results'
-      - job: Pack
-        displayName: '📦 Pack'
-        dependsOn: [  ]
-        steps:
-          - task: Cache@2
-            inputs:
-              key: $(Agent.OS) | global.json, source/**/*.csproj
-              restoreKeys: $(Agent.OS)
-              path: ~/.nuget/packages
-          - task: CmdLine@2
-            inputs:
-              script: './build.cmd Restore Compile Pack --skip'
-            env:
-              AzurePipelinesAccessToken: $(System.AccessToken)
-              EnterpriseAccessToken: $(EnterpriseAccessToken)
-              SlackUserAccessToken: $(SlackUserAccessToken)
-          - task: PublishBuildArtifacts@1
-            inputs:
-              artifactName: packages
-              pathtoPublish: 'output/packages'
+              artifactName: coverage-report.zip
+              pathtoPublish: 'output/coverage-report.zip'
