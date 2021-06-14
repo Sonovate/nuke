@@ -50,9 +50,12 @@ partial class Build
         protected override AzurePipelinesJob GetJob(
             ExecutableTarget executableTarget,
             LookupTable<ExecutableTarget, AzurePipelinesJob> jobs,
-            IReadOnlyCollection<ExecutableTarget> relevantTargets)
+            IReadOnlyCollection<ExecutableTarget> relevantTargets,
+            AzurePipelinesParameter[] parameters,
+            AzurePipelinesVariable[] variables)
+
         {
-            var job = base.GetJob(executableTarget, jobs, relevantTargets);
+            var job = base.GetJob(executableTarget, jobs, relevantTargets, parameters, variables);
 
             var symbol = CustomNames.GetValueOrDefault(job.Name).NotNull("symbol != null");
             job.DisplayName = job.Parallel == 0

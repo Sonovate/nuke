@@ -19,6 +19,7 @@ namespace Nuke.Common.CI.AzurePipelines.Configuration
         public string BuildCmdPath { get; set; }
         public int? PartitionSize { get; set; }
         public Dictionary<string, string> Imports { get; set; }
+        public string WorkingDirectory { get; set; }
 
         public override void Write(CustomFileWriter writer)
         {
@@ -30,7 +31,11 @@ namespace Nuke.Common.CI.AzurePipelines.Configuration
 
                 using (writer.WriteBlock("inputs:"))
                 {
-                    writer.WriteLine($"script: './{BuildCmdPath} {arguments}'");
+                    writer.WriteLine($"script: 'chmod +x ./{BuildCmdPath}; ./{BuildCmdPath} {arguments}'");
+                    if (!string.IsNullOrEmpty(WorkingDirectory))
+                    {
+                        writer.WriteLine($"workingDirectory: {WorkingDirectory}");
+                    }
                 }
 
                 if (Imports.Count > 0)

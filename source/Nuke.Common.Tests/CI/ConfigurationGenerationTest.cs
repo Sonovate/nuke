@@ -87,7 +87,8 @@ namespace Nuke.Common.Tests.CI
                         TriggerPathsInclude = new[] { "included_path" },
                         TriggerPathsExclude = new[] { "excluded_path" },
                         TriggerTagsInclude = new[] { "included_tags" },
-                        TriggerTagsExclude = new[] { "excluded_tags" }
+                        TriggerTagsExclude = new[] { "excluded_tags" },
+                        PipelineParameters = new[] { nameof(Verbosity) }
                     }
                 );
 
@@ -182,6 +183,7 @@ namespace Nuke.Common.Tests.CI
             [Parameter] public readonly string[] StringArray = new[] { "first", "second" };
             [Parameter] public readonly int[] IntegerArray = new[] { 1, 2 };
             [Parameter] public readonly Configuration[] ConfigurationArray = new[] { Configuration.Debug, Configuration.Release };
+            [Variable] public string StringVariable = "var"; 
 
             public AbsolutePath OutputDirectory => RootDirectory / "output";
 

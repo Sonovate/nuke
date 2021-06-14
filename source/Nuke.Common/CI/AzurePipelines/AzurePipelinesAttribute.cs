@@ -4,8 +4,11 @@
 
 using System;
 using System.Collections.Generic;
+using System.Data;
 using System.IO;
 using System.Linq;
+using System.Linq.Expressions;
+using System.Reflection;
 using JetBrains.Annotations;
 using Nuke.Common.CI.AzurePipelines.Configuration;
 using Nuke.Common.Execution;
@@ -13,6 +16,7 @@ using Nuke.Common.IO;
 using Nuke.Common.Tooling;
 using Nuke.Common.Utilities;
 using Nuke.Common.Utilities.Collections;
+using Nuke.Common.ValueInjection;
 using static Nuke.Common.IO.PathConstruction;
 
 namespace Nuke.Common.CI.AzurePipelines
@@ -54,6 +58,9 @@ namespace Nuke.Common.CI.AzurePipelines
 
         public string[] InvokedTargets { get; set; } = new string[0];
 
+        public string[] PipelineParameters { get; set; } = new string[0];
+        public string CmdWorkingDirectory { get; set; }
+
         public bool TriggerDisabled { get; set; }
 
         public bool TriggerBatch
@@ -82,6 +89,11 @@ namespace Nuke.Common.CI.AzurePipelines
         public string[] ImportSecrets { get; set; } = new string[0];
         public string ImportSystemAccessTokenAs { get; set; }
 
+        protected override string BuildCmdPath =>
+            NukeBuild.RootDirectory.GlobFiles("build.sh", "*/build.sh")
+                .Select(x => NukeBuild.RootDirectory.GetUnixRelativePathTo(x))
+                .FirstOrDefault().NotNull("BuildCmdPath != null");
+        
         public override CustomFileWriter CreateWriter(StreamWriter streamWriter)
         {
             return new CustomFileWriter(streamWriter, indentationFactor: 2, commentPrefix: "#");
@@ -89,12 +101,87 @@ namespace Nuke.Common.CI.AzurePipelines
 
         public override ConfigurationEntity GetConfiguration(NukeBuild build, IReadOnlyCollection<ExecutableTarget> relevantTargets)
         {
+            var variables = GetVariables(build, relevantTargets).ToArray();
+            var parameters = GetParameters(build, relevantTargets).ToArray();
+            var parameterVariables = parameters.Select(x => new AzurePipelinesVariable{Name = x.Name, DefaultValue = x.Name, IsParameterVariable = true});
             return new AzurePipelinesConfiguration
                    {
                        VariableGroups = ImportVariableGroups,
                        VcsPushTrigger = GetVcsPushTrigger(),
-                       Stages = _images.Select(x => GetStage(x, relevantTargets)).ToArray()
+                       Stages = _images.Select(x => GetStage(x, relevantTargets, parameters, variables)).ToArray(),
+                       Parameters = parameters,
+                       Variables = parameterVariables.Union(variables).ToArray()
                    };
+        }
+
+        protected virtual IEnumerable<AzurePipelinesVariable> GetVariables(NukeBuild build, IReadOnlyCollection<ExecutableTarget> relevantTargets)
+        {
+            return ValueInjectionUtility.GetParameterMembers(build.GetType(), includeUnlisted: false)
+                .Where(x => x.HasCustomAttribute<VariableAttribute>())
+                .Select(x => GetVariable(x, build, required: false));
+        }
+        
+        protected virtual IEnumerable<AzurePipelinesParameter> GetParameters(NukeBuild build, IReadOnlyCollection<ExecutableTarget> relevantTargets)
+        {
+            return ValueInjectionUtility.GetParameterMembers(build.GetType(), includeUnlisted: false)
+                .Except(relevantTargets.SelectMany(x => x.Requirements
+                    .Where(y => y is not Expression<Func<bool>>)
+                    .Select(y => y.GetMemberInfo())))
+                .Where(x => !x.HasCustomAttribute<SecretAttribute>() || ImportSecrets.Contains(ParameterService.GetParameterMemberName(x)))
+                .Where(x => x.DeclaringType != typeof(NukeBuild) || x.Name == nameof(NukeBuild.Verbosity))
+                .Where(x => PipelineParameters.Contains(x.Name))
+                .Select(x => GetParameter(x, build, required: false));
+        }
+
+        protected virtual AzurePipelinesVariable GetVariable(MemberInfo member, NukeBuild build, bool required)
+        {  
+            return new() 
+                  {
+                      Name = ParameterService.GetParameterMemberName(member),
+                      DefaultValue = member.GetValue(build) as string
+                  };
+        }
+        
+        protected virtual AzurePipelinesParameter GetParameter(MemberInfo member, NukeBuild build, bool required)
+        {
+            var attribute = member.GetCustomAttribute<ParameterAttribute>();
+            var valueSet = ParameterService.GetParameterValueSet(member, build);
+
+            var numericTypes = new HashSet<Type>
+            {
+                typeof(decimal), typeof(short), typeof(long), typeof(int), typeof(float), typeof(double)
+            };
+            
+            string type;
+            var memberType = member.GetMemberType();
+            if (memberType == typeof(string))
+            {
+                type = "string";
+            }
+            else if (numericTypes.Contains(memberType))
+            {
+                type = "number";
+            }else if (memberType == typeof(bool))
+            {
+                type = "boolean";
+            }
+            else
+            {
+                type = "object";
+            }
+            
+            return new AzurePipelinesParameter
+           {
+               Name = ParameterService.GetParameterMemberName(member),
+
+               Description = attribute.Description,
+               Options = valueSet?.ToDictionary(x => x.Item1, x => x.Item2),
+               Type = type,
+               DefaultValue = member.GetValue(build) as string,
+               // Display = required ? TeamCityParameterDisplay.Prompt : TeamCityParameterDisplay.Normal,
+               // AllowMultiple = member.GetMemberType().IsArray && valueSet is not null,
+               // ValueSeparator = valueSeparator
+           };
         }
 
         [CanBeNull]
@@ -125,11 +212,13 @@ namespace Nuke.Common.CI.AzurePipelines
 
         protected virtual AzurePipelinesStage GetStage(
             AzurePipelinesImage image,
-            IReadOnlyCollection<ExecutableTarget> relevantTargets)
+            IReadOnlyCollection<ExecutableTarget> relevantTargets,
+            AzurePipelinesParameter[] parameters,
+            AzurePipelinesVariable[] variables)
         {
             var lookupTable = new LookupTable<ExecutableTarget, AzurePipelinesJob>();
             var jobs = relevantTargets
-                .Select(x => (ExecutableTarget: x, Job: GetJob(x, lookupTable, relevantTargets)))
+                .Select(x => (ExecutableTarget: x, Job: GetJob(x, lookupTable, relevantTargets, parameters, variables)))
                 .ForEachLazy(x => lookupTable.Add(x.ExecutableTarget, x.Job))
                 .Select(x => x.Job).ToArray();
 
@@ -146,7 +235,9 @@ namespace Nuke.Common.CI.AzurePipelines
         protected virtual AzurePipelinesJob GetJob(
             ExecutableTarget executableTarget,
             LookupTable<ExecutableTarget, AzurePipelinesJob> jobs,
-            IReadOnlyCollection<ExecutableTarget> relevantTargets)
+            IReadOnlyCollection<ExecutableTarget> relevantTargets,
+            AzurePipelinesParameter[] parameters,
+            AzurePipelinesVariable[] variables)
         {
             var totalPartitions = executableTarget.PartitionSize ?? 0;
             var dependencies = GetTargetDependencies(executableTarget).SelectMany(x => jobs[x]).ToArray();
@@ -156,13 +247,15 @@ namespace Nuke.Common.CI.AzurePipelines
                        DisplayName = executableTarget.Name,
                        Dependencies = dependencies,
                        Parallel = totalPartitions,
-                       Steps = GetSteps(executableTarget, relevantTargets).ToArray(),
+                       Steps = GetSteps(executableTarget, relevantTargets, parameters).ToArray(),
+                       Variables = variables
                    };
         }
 
         protected virtual IEnumerable<AzurePipelinesStep> GetSteps(
             ExecutableTarget executableTarget,
-            IReadOnlyCollection<ExecutableTarget> relevantTargets)
+            IReadOnlyCollection<ExecutableTarget> relevantTargets,
+            AzurePipelinesParameter[] azurePipelinesParameters)
         {
             if (CacheKeyFiles.Any())
             {
@@ -184,18 +277,27 @@ namespace Nuke.Common.CI.AzurePipelines
                 .Distinct()
                 .Select(GetArtifactPath).ToArray();
 
-            // var artifactDependencies = (
-            //     from artifactDependency in ArtifactExtensions.ArtifactDependencies[executableTarget.Definition]
-            //     let dependency = executableTarget.ExecutionDependencies.Single(x => x.Factory == artifactDependency.Item1)
-            //     let rules = (artifactDependency.Item2.Any()
-            //             ? artifactDependency.Item2
-            //             : ArtifactExtensions.ArtifactProducts[dependency.Definition])
-            //         .Select(GetArtifactRule).ToArray()
-            //     select new TeamCityArtifactDependency
-            //            {
-            //                BuildType = buildTypes[dependency].Single(x => x.Partition == null),
-            //                ArtifactRules = rules
-            //            }).ToArray<TeamCityDependency>();
+            var artifactDependencies = from artifactDependency in ArtifactExtensions.ArtifactDependencies[executableTarget.Definition]
+                where executableTarget.ExecutionDependencies.Any()
+                let dependency = executableTarget.ExecutionDependencies.Single(x => x.Factory == artifactDependency.Item1)
+                let rules = (artifactDependency.Item2.Any()
+                        ? artifactDependency.Item2
+                        : ArtifactExtensions.ArtifactProducts[dependency.Definition])
+                    .Select(x => (AbsolutePath) x)
+                    .Select(GetArtifactPath).ToArray()
+                select rules;
+
+            var dependencies = artifactDependencies as string[][] ?? artifactDependencies.ToArray();
+            foreach (var rule in dependencies.SelectMany(rules => rules))
+            {
+                var artifactName = rule.Split('/').Last();
+                
+                yield return new AzurePipelinesDownloadStep
+                       {
+                           ArtifactName = artifactName,
+                           DownloadPath = "./"
+                       };
+            }
 
             var chainLinkTargets = GetInvokedTargets(executableTarget, relevantTargets).ToArray();
             yield return new AzurePipelinesCmdStep
@@ -203,14 +305,16 @@ namespace Nuke.Common.CI.AzurePipelines
                              BuildCmdPath = BuildCmdPath,
                              PartitionSize = executableTarget.PartitionSize,
                              InvokedTargets = chainLinkTargets.Select(x => x.Name).ToArray(),
-                             Imports = GetImports().ToDictionary(x => x.Key, x => x.Value)
+                             Imports = GetImports().ToDictionary(x => x.Key, x => x.Value),
+                             WorkingDirectory = CmdWorkingDirectory
                          };
 
             foreach (var publishedArtifact in publishedArtifacts)
             {
+                var artifactName = publishedArtifact.Split('/').Last();
                 yield return new AzurePipelinesPublishStep
                              {
-                                 ArtifactName = publishedArtifact.Split('/').Last(),
+                                 ArtifactName = artifactName,
                                  PathToPublish = publishedArtifact
                              };
             }
@@ -225,6 +329,7 @@ namespace Nuke.Common.CI.AzurePipelines
 
             foreach (var secret in ImportSecrets)
                 yield return (secret, GetSecretValue(secret));
+
         }
 
         protected virtual string GetArtifact(string artifact)

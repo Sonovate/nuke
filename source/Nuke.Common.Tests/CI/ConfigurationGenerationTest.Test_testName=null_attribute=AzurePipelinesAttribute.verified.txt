@@ -14,8 +14,16 @@
 # </auto-generated>
 # ------------------------------------------------------------------------------
 
+parameters:
+  - name: Verbosity
+    type: object
+
 variables:
   - group: variable-group-1
+  - name: Verbosity
+    value: ${{ parameters.Verbosity }}
+  - name: StringVariable
+    value: var
 
 trigger:
   batch: true
@@ -64,6 +72,8 @@ stages:
       - job: Compile
         displayName: 'Compile'
         dependsOn: [ Restore ]
+        variables:
+          StringVariable: $[ dependencies.Restore.outputs['CmdLine.StringVariable'] ]
         steps:
           - task: Cache@2
             inputs:
@@ -85,6 +95,8 @@ stages:
         dependsOn: [ Compile ]
         strategy:
           parallel: 2
+        variables:
+          StringVariable: $[ dependencies.Compile.outputs['CmdLine.StringVariable'] ]
         steps:
           - task: Cache@2
             inputs:
@@ -104,6 +116,8 @@ stages:
       - job: Coverage
         displayName: 'Coverage'
         dependsOn: [ Test ]
+        variables:
+          StringVariable: $[ dependencies.Test.outputs['CmdLine.StringVariable'] ]
         steps:
           - task: Cache@2
             inputs:
@@ -148,6 +162,8 @@ stages:
       - job: Compile
         displayName: 'Compile'
         dependsOn: [ Restore ]
+        variables:
+          StringVariable: $[ dependencies.Restore.outputs['CmdLine.StringVariable'] ]
         steps:
           - task: Cache@2
             inputs:
@@ -169,6 +185,8 @@ stages:
         dependsOn: [ Compile ]
         strategy:
           parallel: 2
+        variables:
+          StringVariable: $[ dependencies.Compile.outputs['CmdLine.StringVariable'] ]
         steps:
           - task: Cache@2
             inputs:
@@ -188,6 +206,8 @@ stages:
       - job: Coverage
         displayName: 'Coverage'
         dependsOn: [ Test ]
+        variables:
+          StringVariable: $[ dependencies.Test.outputs['CmdLine.StringVariable'] ]
         steps:
           - task: Cache@2
             inputs:
