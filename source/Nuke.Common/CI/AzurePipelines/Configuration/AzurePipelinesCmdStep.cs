@@ -20,6 +20,8 @@ namespace Nuke.Common.CI.AzurePipelines.Configuration
         public int? PartitionSize { get; set; }
         public Dictionary<string, string> Imports { get; set; }
         public string WorkingDirectory { get; set; }
+        public string GlobalNukeToolExe { get; set; }
+        public string GlobalNukeToolPackage { get; set; }
 
         public override void Write(CustomFileWriter writer)
         {
@@ -29,12 +31,35 @@ namespace Nuke.Common.CI.AzurePipelines.Configuration
                 if (PartitionSize != null)
                     arguments += $" --partition $(System.JobPositionInPhase)/{PartitionSize}";
 
+                var solution = EnvironmentInfo.GetParameter<string>("Solution");
+                if (solution != null)
+                    arguments += $" --solution {solution}";
+                
                 using (writer.WriteBlock("inputs:"))
                 {
-                    writer.WriteLine($"script: 'chmod +x ./{BuildCmdPath}; ./{BuildCmdPath} {arguments}'");
-                    if (!string.IsNullOrEmpty(WorkingDirectory))
+                    if (GlobalNukeToolExe != null || GlobalNukeToolPackage != null)
                     {
-                        writer.WriteLine($"workingDirectory: {WorkingDirectory}");
+                        using (writer.WriteBlock("script: |"))
+                        {
+                            if (GlobalNukeToolPackage != null)
+                            {
+                                writer.WriteLine($"dotnet tool install -g {GlobalNukeToolPackage}");
+                            }
+
+                            writer.WriteLine($"{GlobalNukeToolExe ?? GlobalNukeToolPackage} {arguments}");
+                        }
+                        if (!string.IsNullOrEmpty(WorkingDirectory))
+                        {
+                            writer.WriteLine($"workingDirectory: {WorkingDirectory}");
+                        }
+                    }
+                    else
+                    {
+                        writer.WriteLine($"script: 'chmod +x ./{BuildCmdPath}; ./{BuildCmdPath} {arguments}'");
+                        if (!string.IsNullOrEmpty(WorkingDirectory))
+                        {
+                            writer.WriteLine($"workingDirectory: {WorkingDirectory}");
+                        }   
                     }
                 }
 

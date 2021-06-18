@@ -13,6 +13,7 @@ using JetBrains.Annotations;
 using Nuke.Common.CI.AzurePipelines.Configuration;
 using Nuke.Common.Execution;
 using Nuke.Common.IO;
+using Nuke.Common.ProjectModel;
 using Nuke.Common.Tooling;
 using Nuke.Common.Utilities;
 using Nuke.Common.Utilities.Collections;
@@ -47,6 +48,9 @@ namespace Nuke.Common.CI.AzurePipelines
         }
 
         public override string IdPostfix => _suffix;
+
+        public string GlobalNukeToolPackage { get; set; }
+        public string GlobalNukeToolExe { get; set; }
 
         public override Type HostType => typeof(AzurePipelines);
         public override string ConfigurationFile => ConfigurationDirectory / ConfigurationFileName;
@@ -132,7 +136,7 @@ namespace Nuke.Common.CI.AzurePipelines
                 .Where(x => PipelineParameters.Contains(x.Name))
                 .Select(x => GetParameter(x, build, required: false));
         }
-
+        
         protected virtual AzurePipelinesVariable GetVariable(MemberInfo member, NukeBuild build, bool required)
         {  
             return new() 
@@ -306,7 +310,9 @@ namespace Nuke.Common.CI.AzurePipelines
                              PartitionSize = executableTarget.PartitionSize,
                              InvokedTargets = chainLinkTargets.Select(x => x.Name).ToArray(),
                              Imports = GetImports().ToDictionary(x => x.Key, x => x.Value),
-                             WorkingDirectory = CmdWorkingDirectory
+                             WorkingDirectory = CmdWorkingDirectory,
+                             GlobalNukeToolPackage = GlobalNukeToolPackage,
+                             GlobalNukeToolExe = GlobalNukeToolExe
                          };
 
             foreach (var publishedArtifact in publishedArtifacts)
