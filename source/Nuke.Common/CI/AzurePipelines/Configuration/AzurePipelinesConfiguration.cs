@@ -20,6 +20,8 @@ namespace Nuke.Common.CI.AzurePipelines.Configuration
         public AzurePipelinesStage[] Stages { get; set; }
         public AzurePipelinesParameter[] Parameters { get; set; }
         public AzurePipelinesVariable[] Variables { get; set; }
+        
+        public AzurePipelineResource[] Resources { get; set; }
 
         public override void Write(CustomFileWriter writer)
         {
@@ -28,6 +30,19 @@ namespace Nuke.Common.CI.AzurePipelines.Configuration
                 using (writer.WriteBlock("parameters:"))
                 {
                     Parameters.ForEach(x =>
+                    {
+                        x.Write(writer);
+                    });
+                    writer.WriteLine();
+                }
+            }
+
+            if (Resources.Length > 0)
+            {
+                using (writer.WriteBlock("resources:"))
+                using (writer.WriteBlock("repositories:"))
+                {
+                    Resources.ForEach(x =>
                     {
                         x.Write(writer);
                     });
@@ -57,6 +72,22 @@ namespace Nuke.Common.CI.AzurePipelines.Configuration
             using (writer.WriteBlock("stages:"))
             {
                 Stages.ForEach(x => x.Write(writer));
+            }
+        }
+    }
+
+    public class AzurePipelineResource : ConfigurationEntity
+    {
+        public string Repository { get; set; }
+        public string Name { get; set; }
+        
+        public override void Write(CustomFileWriter writer)
+        {
+            
+            using (writer.WriteBlock($"- repository: {Repository}"))
+            {
+                writer.WriteLine("type: git");
+                writer.WriteLine($"name: {Name}");
             }
         }
     }

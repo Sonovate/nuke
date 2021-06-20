@@ -108,14 +108,32 @@ namespace Nuke.Common.CI.AzurePipelines
             var variables = GetVariables(build, relevantTargets).ToArray();
             var parameters = GetParameters(build, relevantTargets).ToArray();
             var parameterVariables = parameters.Select(x => new AzurePipelinesVariable{Name = x.Name, DefaultValue = x.Name, IsParameterVariable = true});
-            return new AzurePipelinesConfiguration
-                   {
-                       VariableGroups = ImportVariableGroups,
-                       VcsPushTrigger = GetVcsPushTrigger(),
-                       Stages = _images.Select(x => GetStage(x, relevantTargets, parameters, variables)).ToArray(),
-                       Parameters = parameters,
-                       Variables = parameterVariables.Union(variables).ToArray()
-                   };
+            var azurePipelinesStages = _images.Select(x => GetStage(x, relevantTargets, parameters, variables)).ToArray();
+
+            var azurePipelinesConfiguration = new AzurePipelinesConfiguration
+            {
+                VariableGroups = ImportVariableGroups,
+                VcsPushTrigger = GetVcsPushTrigger(),
+                Stages = azurePipelinesStages,
+                Parameters = parameters,
+                Variables = parameterVariables.Union(variables).ToArray(),
+                Resources = GetResources(azurePipelinesStages)
+            };
+
+            return azurePipelinesConfiguration;
+        }
+
+        private static AzurePipelineResource[] GetResources(AzurePipelinesStage[] stages)
+        {
+            var azurePipelineResources = stages
+                .SelectMany(x => x.Jobs.SelectMany(job => job.Steps)).Where(step => step is AzurePipelinesTemplate)
+                .Cast<AzurePipelinesTemplate>()
+                .Select(x => new AzurePipelineResource
+                {
+                    Name = x.TemplateName.Split(new[]{ "@" }, StringSplitOptions.None).Last(),
+                    Repository = x.TemplateName.Split(new[] { "@" }, StringSplitOptions.None).Last()
+                }).ToArray();
+            return azurePipelineResources;
         }
 
         protected virtual IEnumerable<AzurePipelinesVariable> GetVariables(NukeBuild build, IReadOnlyCollection<ExecutableTarget> relevantTargets)
@@ -303,6 +321,14 @@ namespace Nuke.Common.CI.AzurePipelines
                        };
             }
 
+            if (AzurePipelinesTargetDefinitionExtensions.PreSteps.TryGetValue(executableTarget.Name, out var preSteps))
+            {
+                foreach (var preStep in preSteps)
+                {
+                    yield return preStep;
+                }
+            }
+            
             var chainLinkTargets = GetInvokedTargets(executableTarget, relevantTargets).ToArray();
             yield return new AzurePipelinesCmdStep
                          {
@@ -315,6 +341,15 @@ namespace Nuke.Common.CI.AzurePipelines
                              GlobalNukeToolExe = GlobalNukeToolExe
                          };
 
+            if (AzurePipelinesTargetDefinitionExtensions.PostSteps.TryGetValue(executableTarget.Name, out var postSteps))
+            {
+                foreach (var postStep in postSteps)
+                {
+                    yield return postStep;
+                }
+            }
+
+            
             foreach (var publishedArtifact in publishedArtifacts)
             {
                 var artifactName = publishedArtifact.Split('/').Last();

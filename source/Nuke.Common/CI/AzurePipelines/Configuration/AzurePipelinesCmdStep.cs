@@ -27,7 +27,11 @@ namespace Nuke.Common.CI.AzurePipelines.Configuration
         {
             using (writer.WriteBlock("- task: CmdLine@2"))
             {
-                var arguments = $"{InvokedTargets.JoinSpace()} --skip";
+                var invokedTargets = InvokedTargets.JoinSpace();
+                
+                writer.WriteLine($"displayName: Nuke {invokedTargets}");
+                
+                var arguments = $"{invokedTargets} --skip";
                 if (PartitionSize != null)
                     arguments += $" --partition $(System.JobPositionInPhase)/{PartitionSize}";
 
