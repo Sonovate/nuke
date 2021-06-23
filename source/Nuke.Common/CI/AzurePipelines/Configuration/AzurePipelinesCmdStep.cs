@@ -2,9 +2,7 @@
 // Distributed under the MIT License.
 // https://github.com/nuke-build/nuke/blob/master/LICENSE
 
-using System;
 using System.Collections.Generic;
-using System.Linq;
 using JetBrains.Annotations;
 using Nuke.Common.Utilities;
 using Nuke.Common.Utilities.Collections;
@@ -29,7 +27,8 @@ namespace Nuke.Common.CI.AzurePipelines.Configuration
             {
                 var invokedTargets = InvokedTargets.JoinSpace();
                 
-                writer.WriteLine($"displayName: Nuke {invokedTargets}");
+                writer.WriteLine($"displayName: Nuke{invokedTargets}");
+                writer.WriteLine($"name: CmdLine");
                 
                 var arguments = $"{invokedTargets} --skip";
                 if (PartitionSize != null)
