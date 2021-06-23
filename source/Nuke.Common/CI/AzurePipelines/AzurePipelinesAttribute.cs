@@ -132,7 +132,7 @@ namespace Nuke.Common.CI.AzurePipelines
                 {
                     Name = x.TemplateName.Split(new[]{ "@" }, StringSplitOptions.None).Last(),
                     Repository = x.TemplateName.Split(new[] { "@" }, StringSplitOptions.None).Last()
-                }).ToArray();
+                }).Distinct(resource => resource.Repository).ToArray();
             return azurePipelineResources;
         }
 
