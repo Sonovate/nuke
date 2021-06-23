@@ -4,7 +4,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Data;
 using System.IO;
 using System.Linq;
 using System.Linq.Expressions;
@@ -13,7 +12,6 @@ using JetBrains.Annotations;
 using Nuke.Common.CI.AzurePipelines.Configuration;
 using Nuke.Common.Execution;
 using Nuke.Common.IO;
-using Nuke.Common.ProjectModel;
 using Nuke.Common.Tooling;
 using Nuke.Common.Utilities;
 using Nuke.Common.Utilities.Collections;
@@ -53,6 +51,7 @@ namespace Nuke.Common.CI.AzurePipelines
         public string GlobalNukeToolExe { get; set; }
 
         public override Type HostType => typeof(AzurePipelines);
+        
         public override string ConfigurationFile => ConfigurationDirectory / ConfigurationFileName;
         public override IEnumerable<string> GeneratedFiles => new[] { ConfigurationFile };
         protected virtual AbsolutePath ConfigurationDirectory => NukeBuild.RootDirectory;
@@ -97,7 +96,19 @@ namespace Nuke.Common.CI.AzurePipelines
             NukeBuild.RootDirectory.GlobFiles("build.sh", "*/build.sh")
                 .Select(x => NukeBuild.RootDirectory.GetUnixRelativePathTo(x))
                 .FirstOrDefault().NotNull("BuildCmdPath != null");
-        
+
+        protected override StreamWriter CreateStream()
+        {
+            var outputFile = EnvironmentInfo.GetParameter<AbsolutePath>("OutputFile");
+
+            if (outputFile != null)
+            {
+                Directory.CreateDirectory(outputFile.Parent);
+            }
+            
+            return new StreamWriter(File.Open(outputFile ?? ConfigurationFile, FileMode.Create));
+        }
+
         public override CustomFileWriter CreateWriter(StreamWriter streamWriter)
         {
             return new CustomFileWriter(streamWriter, indentationFactor: 2, commentPrefix: "#");
@@ -193,17 +204,17 @@ namespace Nuke.Common.CI.AzurePipelines
             }
             
             return new AzurePipelinesParameter
-           {
-               Name = ParameterService.GetParameterMemberName(member),
+            {
+                Name = ParameterService.GetParameterMemberName(member),
 
-               Description = attribute.Description,
-               Options = valueSet?.ToDictionary(x => x.Item1, x => x.Item2),
-               Type = type,
-               DefaultValue = member.GetValue(build) as string,
+                Description = attribute.Description,
+                Options = valueSet?.ToDictionary(x => x.Item1, x => x.Item2),
+                Type = type,
+                DefaultValue = member.GetValue(build) as string,
                // Display = required ? TeamCityParameterDisplay.Prompt : TeamCityParameterDisplay.Normal,
                // AllowMultiple = member.GetMemberType().IsArray && valueSet is not null,
                // ValueSeparator = valueSeparator
-           };
+            };
         }
 
         [CanBeNull]
