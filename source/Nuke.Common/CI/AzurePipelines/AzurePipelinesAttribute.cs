@@ -304,26 +304,22 @@ namespace Nuke.Common.CI.AzurePipelines
                     ? NukeBuild.RootDirectory.GetUnixRelativePathTo(path)
                     : (string) path;
 
-            var publishedArtifacts = executableTarget.ArtifactProducts
-                .Select(x => (AbsolutePath) x)
-                .Select(x => x.DescendantsAndSelf(y => y.Parent).FirstOrDefault(y => !y.ToString().ContainsOrdinalIgnoreCase("*")))
-                .Distinct()
-                .Select(GetArtifactPath).ToArray();
-
-            var artifactDependencies = from artifactDependency in ArtifactExtensions.ArtifactDependencies[executableTarget.Definition]
-                where executableTarget.ExecutionDependencies.Any()
-                let dependency = executableTarget.ExecutionDependencies.Single(x => x.Factory == artifactDependency.Item1)
-                let rules = (artifactDependency.Item2.Any()
-                        ? artifactDependency.Item2
-                        : ArtifactExtensions.ArtifactProducts[dependency.Definition])
-                    .Select(x => (AbsolutePath) x)
-                    .Select(GetArtifactPath).ToArray()
-                select rules;
-
-            var dependencies = artifactDependencies as string[][] ?? artifactDependencies.ToArray();
+       
+            
+            //
+            // var artifactDependencies = from artifactDependency in executableTarget.ArtifactDependencies
+            //     where executableTarget.ExecutionDependencies.Any()
+            //     let dependency = executableTarget.ExecutionDependencies.Single(x => x.Factory == artifactDependency)
+            //     let rules = (artifactDependency.Item2.Any()
+            //             ? artifactDependency.Item2
+            //             : ArtifactExtensions.ArtifactProducts[dependency.Definition])
+            //         .Select(x => (AbsolutePath) x)
+            //         .Select(GetArtifactPath).ToArray()
+            //     select rules;
+            var dependencies = executableTarget.ArtifactDependencies;
             foreach (var rule in dependencies.SelectMany(rules => rules))
             {
-                var artifactName = rule.Split('/').Last();
+                var artifactName = new DirectoryInfo(rule).Name;
                 
                 yield return new AzurePipelinesDownloadStep
                        {
@@ -360,6 +356,11 @@ namespace Nuke.Common.CI.AzurePipelines
                 }
             }
 
+            var publishedArtifacts = executableTarget.ArtifactProducts
+                .Select(x => (AbsolutePath) x)
+                .Select(x => x.DescendantsAndSelf(y => y.Parent).FirstOrDefault(y => !y.ToString().ContainsOrdinalIgnoreCase("*")))
+                .Distinct()
+                .Select(GetArtifactPath).ToArray();
             
             foreach (var publishedArtifact in publishedArtifacts)
             {

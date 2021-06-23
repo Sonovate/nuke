@@ -91,6 +91,12 @@ project {
             value = "first second",
             allowEmpty = true,
             display = ParameterDisplay.NORMAL)
+        text (
+            "env.StringVariable",
+            label = "StringVariable",
+            value = "var",
+            allowEmpty = true,
+            display = ParameterDisplay.NORMAL)
         select (
             "env.Verbosity",
             label = "Verbosity",
