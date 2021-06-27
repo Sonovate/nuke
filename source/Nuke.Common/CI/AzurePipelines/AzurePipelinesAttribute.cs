@@ -95,7 +95,7 @@ namespace Nuke.Common.CI.AzurePipelines
         protected override string BuildCmdPath =>
             NukeBuild.RootDirectory.GlobFiles("build.sh", "*/build.sh")
                 .Select(x => NukeBuild.RootDirectory.GetUnixRelativePathTo(x))
-                .FirstOrDefault().NotNull("BuildCmdPath != null");
+                .FirstOrDefault();
 
         protected override StreamWriter CreateStream()
         {
@@ -116,6 +116,8 @@ namespace Nuke.Common.CI.AzurePipelines
 
         public override ConfigurationEntity GetConfiguration(NukeBuild build, IReadOnlyCollection<ExecutableTarget> relevantTargets)
         {
+            (BuildCmdPath ?? GlobalNukeToolExe).NotNull();
+            
             var variables = GetVariables(build, relevantTargets).ToArray();
             var parameters = GetParameters(build, relevantTargets).ToArray();
             var parameterVariables = parameters.Select(x => new AzurePipelinesVariable{Name = x.Name, DefaultValue = x.Name, IsParameterVariable = true});
