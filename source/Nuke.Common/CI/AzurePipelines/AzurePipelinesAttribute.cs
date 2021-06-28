@@ -379,6 +379,8 @@ namespace Nuke.Common.CI.AzurePipelines
         {
             static string GetSecretValue(string secret) => $"$({secret})";
 
+            yield return ("NUKE_TELEMETRY_OPTOUT", "true");
+            
             if (ImportSystemAccessTokenAs != null)
                 yield return (ImportSystemAccessTokenAs, GetSecretValue("System.AccessToken"));
 
