@@ -28,7 +28,7 @@ namespace Nuke.Common.Tools.SonarScanner
         {
             return ToolPathResolver.GetPackageExecutable(
                 packageId: "dotnet-sonarscanner|MSBuild.SonarQube.Runner.Tool",
-                packageExecutable: "SonarScanner.MSBuild.dll|SonarScanner.MSBuild.exe",
+                packageExecutable: "SonarScanner.MSBuild.dll|SonarScanner.MSBuild.exe|sonar-scanner.bat",
                 framework: framework);
         }
     }
